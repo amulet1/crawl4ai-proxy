@@ -14,11 +14,13 @@ import (
 )
 
 var (
-	LISTEN_IP         string = ""
-	LISTEN_PORT       int    = 8000
-	CRAWL4AI_ENDPOINT        = "http://crawl4ai:11235/crawl"
-	CRAWL4AI_API_TOKEN       = ""
-	httpClient               = &http.Client{
+	LISTEN_IP               string = ""
+	LISTEN_PORT             int    = 8000
+	CRAWL4AI_ENDPOINT              = "http://crawl4ai:11235/crawl"
+	CRAWL4AI_API_TOKEN             = ""
+	CRAWL4AI_BROWSER_CONFIG        = map[string]interface{}{}
+	CRAWL4AI_CRAWLER_CONFIG        = map[string]interface{}{}
+	httpClient                     = &http.Client{
 		Timeout: 60 * time.Second,
 	}
 )
@@ -44,11 +46,29 @@ func ReadEnvironment() {
 	if token != "" {
 		CRAWL4AI_API_TOKEN = token
 	}
+
+	browser_config := os.Getenv("CRAWL4AI_BROWSER_CONFIG")
+	if browser_config != "" {
+		err = json.Unmarshal([]byte(browser_config), &CRAWL4AI_BROWSER_CONFIG)
+		if err != nil {
+			log.Printf("Ignoring invalid CRAWL4AI_BROWSER_CONFIG")
+		}
+	}
+
+	crawler_config := os.Getenv("CRAWL4AI_CRAWLER_CONFIG")
+	if crawler_config != "" {
+		err = json.Unmarshal([]byte(crawler_config), &CRAWL4AI_CRAWLER_CONFIG)
+		if err != nil {
+			log.Printf("Ignoring invalid CRAWL4AI_CRAWLER_CONFIG")
+		}
+	}
 }
 
 // For the openwebui-facing endpoint
 type Request struct {
-	Urls []string `json:"urls"`
+	Urls          []string               `json:"urls"`
+	BrowserConfig map[string]interface{} `json:"browser_config"`
+	CrawlerConfig map[string]interface{} `json:"crawler_config"`
 }
 
 type SuccessResponseItem struct {
@@ -124,6 +144,9 @@ func CrawlEndpoint(response http.ResponseWriter, request *http.Request) {
 	}
 
 	log.Printf("Request to crawl %s from %s\n", requestData.Urls, request.RemoteAddr)
+
+	requestData.BrowserConfig = CRAWL4AI_BROWSER_CONFIG
+	requestData.CrawlerConfig = CRAWL4AI_CRAWLER_CONFIG
 
 	body, err := jsonEncode(requestData)
 	if err != nil {
