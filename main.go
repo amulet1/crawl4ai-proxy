@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -106,6 +108,15 @@ func CrawlEndpoint(response http.ResponseWriter, request *http.Request) {
 		return
 	}
 
+	if err := validateURLs(requestData.Urls); err != nil {
+		response.WriteHeader(400)
+		resp := errorResponseFromError("invalid urls", err)
+		body, _ := jsonEncode(resp)
+		response.Write(body)
+		log.Printf("400 invalid urls :: %s :: %v\n", request.RemoteAddr, err)
+		return
+	}
+
 	log.Printf("Request to crawl %s from %s\n", requestData.Urls, request.RemoteAddr)
 
 	body, err := jsonEncode(requestData)
@@ -188,6 +199,26 @@ func CrawlEndpoint(response http.ResponseWriter, request *http.Request) {
 	}
 	response.Write(body)
 	log.Printf("200 :: %s :: %d results\n", request.RemoteAddr, len(ret))
+}
+
+func validateURLs(urls []string) error {
+	if len(urls) == 0 {
+		return fmt.Errorf("urls array is empty")
+	}
+	for i, u := range urls {
+		u = strings.TrimSpace(u)
+		if u == "" {
+			return fmt.Errorf("url at index %d is empty", i)
+		}
+		parsed, err := url.Parse(u)
+		if err != nil {
+			return fmt.Errorf("url at index %d is invalid: %v", i, err)
+		}
+		if parsed.Scheme != "http" && parsed.Scheme != "https" {
+			return fmt.Errorf("url at index %d must use http or https scheme", i)
+		}
+	}
+	return nil
 }
 
 func main() {
