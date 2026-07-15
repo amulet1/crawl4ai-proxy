@@ -8,12 +8,16 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"time"
 )
 
 var (
 	LISTEN_IP         string = ""
 	LISTEN_PORT       int    = 8000
 	CRAWL4AI_ENDPOINT        = "http://crawl4ai:11235/crawl"
+	httpClient               = &http.Client{
+		Timeout: 60 * time.Second,
+	}
 )
 
 func ReadEnvironment() {
@@ -68,21 +72,16 @@ func errorResponseFromError(name string, err error) ErrorResponse {
 	}
 }
 
-func jsonEncodeInfallible(object any) []byte {
-	encoded, err := json.Marshal(object)
-	if err != nil {
-		panic(err)
-	}
-	return encoded
+func jsonEncode(object any) ([]byte, error) {
+	return json.Marshal(object)
 }
 
 func CrawlEndpoint(response http.ResponseWriter, request *http.Request) {
-	response.Header().Set("Content-Type", "application/json")
-
 	if request.Method != "POST" {
 		response.WriteHeader(405)
 		resp := ErrorResponse{ErrorName: "method not allowed"}
-		response.Write(jsonEncodeInfallible(resp))
+		body, _ := jsonEncode(resp)
+		response.Write(body)
 		log.Printf("405 method not allowed :: %s\n", request.RemoteAddr)
 		return
 	}
@@ -90,7 +89,8 @@ func CrawlEndpoint(response http.ResponseWriter, request *http.Request) {
 	if request.Header.Get("Content-Type") != "application/json" {
 		response.WriteHeader(400)
 		resp := ErrorResponse{ErrorName: "content type must be application/json"}
-		response.Write(jsonEncodeInfallible(resp))
+		body, _ := jsonEncode(resp)
+		response.Write(body)
 		log.Printf("400 invalid content type :: %s\n", request.RemoteAddr)
 		return
 	}
@@ -100,23 +100,41 @@ func CrawlEndpoint(response http.ResponseWriter, request *http.Request) {
 	if err != nil {
 		response.WriteHeader(400)
 		resp := errorResponseFromError("invalid json", err)
-		response.Write(jsonEncodeInfallible(resp))
+		body, _ := jsonEncode(resp)
+		response.Write(body)
 		log.Printf("400 invalid json :: %s\n", request.RemoteAddr)
 		return
 	}
 
 	log.Printf("Request to crawl %s from %s\n", requestData.Urls, request.RemoteAddr)
 
-	req, err := http.NewRequest("POST", CRAWL4AI_ENDPOINT, bytes.NewReader(jsonEncodeInfallible(requestData)))
+	body, err := jsonEncode(requestData)
 	if err != nil {
-		panic(err)
+		response.WriteHeader(400)
+		resp := errorResponseFromError("invalid json", err)
+		body, _ := jsonEncode(resp)
+		response.Write(body)
+		log.Printf("400 invalid json :: %s\n", request.RemoteAddr)
+		return
+	}
+	req, err := http.NewRequest("POST", CRAWL4AI_ENDPOINT, bytes.NewReader(body))
+	if err != nil {
+		response.WriteHeader(500)
+		resp := errorResponseFromError("internal_error", err)
+		body, _ := jsonEncode(resp)
+		response.Write(body)
+		log.Printf("500 internal_error :: %s :: %v\n", request.RemoteAddr, err)
+		return
 	}
 
-	crawlResponse, err := http.DefaultClient.Do(req)
+	req.Header.Set("Content-Type", "application/json")
+
+	crawlResponse, err := httpClient.Do(req)
 	if err != nil || crawlResponse.StatusCode != 200 {
 		response.WriteHeader(502)
 		resp := ErrorResponse{ErrorName: "bad gateway"}
-		response.Write(jsonEncodeInfallible(resp))
+		body, _ := jsonEncode(resp)
+		response.Write(body)
 		log.Printf("502 bad gateway :: %s\n", request.RemoteAddr)
 		return
 	}
@@ -126,12 +144,23 @@ func CrawlEndpoint(response http.ResponseWriter, request *http.Request) {
 	if err != nil {
 		response.WriteHeader(502)
 		resp := ErrorResponse{ErrorName: "bad gateway", Detail: "invalid json received from crawl api"}
-		response.Write(jsonEncodeInfallible(resp))
+		body, _ := jsonEncode(resp)
+		response.Write(body)
 		log.Printf("502 bad gateway - invalid json from crawl api :: %s\n", request.RemoteAddr)
 		return
 	}
 
 	ret := SuccessResponse{}
+	if crawlData.Results == nil {
+		crawlData.Results = []struct {
+			Url      string `json:"url"`
+			Markdown struct {
+				RawMarkdown string `json:"raw_markdown"`
+			} `json:"markdown"`
+			Metadata map[string]string `json:"metadata"`
+		}{
+		}
+	}
 	for _, result := range crawlData.Results {
 		if result.Metadata == nil {
 			result.Metadata = map[string]string{}
@@ -152,8 +181,13 @@ func CrawlEndpoint(response http.ResponseWriter, request *http.Request) {
 	}
 
 	response.WriteHeader(200)
-	response.Write(jsonEncodeInfallible(ret))
-	log.Printf("200 :: %s\n", request.RemoteAddr)
+	body, err := jsonEncode(ret)
+	if err != nil {
+		log.Printf("500 internal_error :: %s :: %v\n", request.RemoteAddr, err)
+		return
+	}
+	response.Write(body)
+	log.Printf("200 :: %s :: %d results\n", request.RemoteAddr, len(ret))
 }
 
 func main() {
