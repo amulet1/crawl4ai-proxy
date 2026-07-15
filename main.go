@@ -17,6 +17,7 @@ var (
 	LISTEN_IP         string = ""
 	LISTEN_PORT       int    = 8000
 	CRAWL4AI_ENDPOINT        = "http://crawl4ai:11235/crawl"
+	CRAWL4AI_API_TOKEN       = ""
 	httpClient               = &http.Client{
 		Timeout: 60 * time.Second,
 	}
@@ -37,6 +38,11 @@ func ReadEnvironment() {
 	endpoint := os.Getenv("CRAWL4AI_ENDPOINT")
 	if endpoint != "" {
 		CRAWL4AI_ENDPOINT = endpoint
+	}
+
+	token := os.Getenv("CRAWL4AI_API_TOKEN")
+	if token != "" {
+		CRAWL4AI_API_TOKEN = token
 	}
 }
 
@@ -139,6 +145,10 @@ func CrawlEndpoint(response http.ResponseWriter, request *http.Request) {
 	}
 
 	req.Header.Set("Content-Type", "application/json")
+
+	if CRAWL4AI_API_TOKEN != "" {
+		req.Header.Set("Authorization", "Bearer "+CRAWL4AI_API_TOKEN)
+	}
 
 	crawlResponse, err := httpClient.Do(req)
 	if err != nil || crawlResponse.StatusCode != 200 {
