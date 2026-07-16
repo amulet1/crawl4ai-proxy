@@ -22,8 +22,8 @@ services:
             - LISTEN_PORT=8000
             - CRAWL4AI_ENDPOINT=http://crawl4ai:11235/crawl
             - CRAWL4AI_API_TOKEN=your_token_here
-            - CRAWL4AI_BROWSER_CONFIG='{"viewport": {"width": 1920, "height": 1080}}'
-            - CRAWL4AI_CRAWLER_CONFIG='{"timeout": 30}'
+            - CRAWL4AI_BROWSER_CONFIG={"viewport":{"width":1920,"height":1080}}
+            - CRAWL4AI_CRAWLER_CONFIG={"timeout":30}
         networks:
             - openwebui
 
