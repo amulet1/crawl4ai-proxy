@@ -225,7 +225,7 @@ func CrawlEndpoint(response http.ResponseWriter, request *http.Request) {
 	}
 
 	response.WriteHeader(200)
-	body, err := jsonEncode(ret)
+	body, err = jsonEncode(ret)
 	if err != nil {
 		log.Printf("500 internal_error :: %s :: %v\n", request.RemoteAddr, err)
 		return
